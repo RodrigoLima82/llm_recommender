@@ -1,11 +1,7 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to assemble the LLM-based product recommender for intergration into various applications.  This notebook was developed on a Databricks ML 14.2 cluster.
-
-# COMMAND ----------
-
-# MAGIC %md ##Introduction
+# MAGIC %md ##Introdução
 # MAGIC
-# MAGIC With our product catalog indexed for search and a general recommender in place, we now have all the components we need to enable our recommendation engine. The basic pattern will see us receiving a list of items from an external application, generating a set of general recommendations from these items and then using those recommendations to bring forward the specific items in our catalog that we can then present to a user.  All the basic components for this were developed in prior notebooks.  Our primary task here is to bring these together behind a single function call.
+# MAGIC Com nosso catálogo de produtos indexado para pesquisa e um recomendador geral em vigor, agora temos todos os componentes necessários para habilitar nosso mecanismo de recomendação. O padrão básico consistirá em receber uma lista de itens de um aplicativo externo, gerar um conjunto de recomendações gerais a partir desses itens e, em seguida, usar essas recomendações para trazer os itens específicos em nosso catálogo que podemos apresentar a um usuário. Todos os componentes básicos para isso foram desenvolvidos em notebooks anteriores. Nossa tarefa principal aqui é reunir tudo isso por trás de uma única chamada de função.
 
 # COMMAND ----------
 
@@ -35,49 +31,49 @@ import requests
 
 # COMMAND ----------
 
-# MAGIC %md ##Step 1: Combine General Recommendation & Product Search
+# MAGIC %md ##Passo 1: Combinar Recomendação Geral e Busca de Produtos
 # MAGIC
-# MAGIC As mentioned above, all the logic for generating general recommendations and retrieving specific, related products from our product catalog were defined in prior notebooks.  Here, we will refactor that logic into a series of functions and make an end-to-end call to retrieve recommendations.  We will also include references to LLM model endpoints and workspace URLs in anticipation of a deployment from outside of the Databricks environment in the next step:
+# MAGIC Conforme mencionado anteriormente, toda a lógica para gerar recomendações gerais e recuperar produtos específicos relacionados ao nosso catálogo de produtos foi definida em notebooks anteriores. Aqui, vamos refatorar essa lógica em uma série de funções e fazer uma chamada de ponta a ponta para recuperar recomendações. Também incluiremos referências aos endpoints do modelo LLM e URLs do workspace em antecipação a uma implantação fora do ambiente do Databricks na próxima etapa:
 # MAGIC
-# MAGIC **NOTE** The url for your LLM is accessible through the model serving page of your Databricks workspace assuming this feature is enabled in your region.
+# MAGIC **NOTA** A URL do seu LLM é acessível por meio da página de serviço de modelo do seu workspace do Databricks, desde que esse recurso esteja habilitado em sua região.
 # MAGIC
-# MAGIC **NOTE** Connectivity to your vector store and LLM endpoint from outside of Databricks depends on either a [personal access token](https://docs.databricks.com/en/dev-tools/auth/pat.html) or a [service principle](https://docs.databricks.com/en/dev-tools/service-principals.html).  We've elected to use personal access token (PAT) and have stored it to a [Databricks secrets](https://docs.databricks.com/en/security/secrets/index.html).  The secret scope and key are identified in the variables below.
+# MAGIC **NOTA** A conectividade com o seu vector store e o endpoint do LLM fora do Databricks depende de um [token de acesso pessoal](https://docs.databricks.com/en/dev-tools/auth/pat.html) ou de um [princípio de serviço](https://docs.databricks.com/en/dev-tools/service-principals.html). Optamos por usar um token de acesso pessoal (PAT) e o armazenamos em um [segredo do Databricks](https://docs.databricks.com/en/security/secrets/index.html). O escopo do segredo e a chave são identificados nas variáveis abaixo.
 
 # COMMAND ----------
 
 # DBTITLE 1,Define Workspace Parameters
 workspace_url = f'https://{spark.conf.get("spark.databricks.workspaceUrl")}' # the url of the workspace housing the vector store
 endpoint_url = f'{workspace_url}/serving-endpoints/databricks-llama-2-70b-chat/invocations' # the url associated with your llm
-token = dbutils.secrets.get('llm_recommender','vs_pat')
+token = "<Your Token>"
 
 # COMMAND ----------
 
 # DBTITLE 1,Define Items from which to Make Recommendations
-ordered_list_of_items = ['scarf', 'beanie', 'ear muffs']
+ordered_list_of_items = ['cachecol', 'gorro', 'protetores de orelha']
 
 # COMMAND ----------
 
-# DBTITLE 1,Get General Product Suggestions
+# define function to assemble the prompt
+def _get_prompt(items):
+
+  # define system prompt
+  system_prompt = 'Você é um assistente de IA que funciona como um sistema de recomendação para um site de comércio eletrônico.'
+  system_prompt += ' Seja específico e limite suas respostas ao formato solicitado.'
+
+  # build user prompt    
+  items_delimited = ', '.join(items[:-1]) + ', and ' + items[-1] if len(items) > 1 else items[0]
+  user_prompt = f"Um usuário comprou {items_delimited} nessa ordem. Quais seriam os cinco itens que ele/ela provavelmente compraria em seguida?"
+  user_prompt += "Expresse sua resposta como um objeto JSON com uma chave 'next_items' e um valor representando sua matriz de itens recomendados."
+
+  # assemble full prompt
+  prompt = f"[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n"
+  prompt += f"{user_prompt}[/INST]"
+
+  return prompt
+
+# COMMAND ----------
+
 def get_general_products(endpoint_url, token, items):
-
-  # define function to assemble the prompt
-  def _get_prompt(items):
-
-    # define system prompt
-    system_prompt = 'You are an AI assistant functioning as a recommendation system for an ecommerce website.'
-    system_prompt += ' Be specific and limit your answers to the requested format.'
-
-    # build user prompt    
-    items_delimited = ', '.join(items[:-1]) + ', and ' + items[-1] if len(items) > 1 else items[0]
-    user_prompt = f"A user bought {items_delimited} in that order. What five items would he/she be likely to purchase next?"
-    user_prompt += "Express your response as a JSON object with a key of 'next_items' and a value representing your array of recommended items."
-    
-    # assemble full prompt
-    prompt = f"[INST] <<SYS>>\n{system_prompt}\n<</SYS>>\n"
-    prompt += f"{user_prompt}[/INST]"
-    
-    return prompt
-
 
   # headers for the request
   headers = {
@@ -102,19 +98,25 @@ def get_general_products(endpoint_url, token, items):
 
   # make the POST request
   response = requests.post(endpoint_url, headers=headers, json=data, auth=('token', auth_token))
+
   raw_text = json.loads(response.text)['choices'][0]['message']["content"]
 
   # extract just the list from the response
   json_text = raw_text[:raw_text.rindex('}')+1]
-  ret = json.loads(json_text)['next_items']
+  ret = json.loads(json_text)#['next_items']
 
   # return the response
-  return ret
+  return json_text
 
+# COMMAND ----------
 
+# DBTITLE 1,Get General Product Suggestions
+import json
 
-# test the function
-get_general_products(endpoint_url, token, ordered_list_of_items)
+json_text = get_general_products(endpoint_url, token, ordered_list_of_items)
+json_data = json.loads(json_text)
+
+json_text
 
 # COMMAND ----------
 
@@ -124,7 +126,7 @@ def get_specific_products(vs_client, general_items, num_items):
   # connect to vector store index
   idx = vs_client.get_index(
   	index_name=f"{config['catalog']}.{config['schema']}.{config['vs index']}", 
-  	endpoint_name='vs_'+config['embedding_model_name']
+  	endpoint_name="one-env-shared-endpoint-2"
   	)
 
   # retrieve related products
@@ -148,9 +150,9 @@ get_specific_products(vs_client, general_items, 5)
 
 # COMMAND ----------
 
-# MAGIC %md ##Step 2: Deploy the Model
+# MAGIC %md ##Passo 2: Implante o Modelo
 # MAGIC
-# MAGIC We now have all the building blocks we need to deploy our recommender.  We will deploy that model using [Fast API](https://fastapi.tiangolo.com/), a simple and lightweight mechanism for deploying Python-based APIs.  We've elected to use this for our deployment path as many developers are using Fast API for such deployments and the model serving capabilities in Databricks for generative AI models are evolving.  In the future, we anticipate having a preference for model serving, but we figured this would be a great opportunity to demonstrate deployment using Fast API.
+# MAGIC Agora temos todos os blocos de construção necessários para implantar nosso sistema de recomendação. Vamos implantar esse modelo usando o [Fast API](https://fastapi.tiangolo.com/), um mecanismo simples e leve para implantar APIs baseadas em Python. Optamos por usar o Fast API para nosso caminho de implantação, pois muitos desenvolvedores estão usando o Fast API para essas implantações e as capacidades de serviço de modelo no Databricks para modelos de IA generativos estão evoluindo. No futuro, esperamos ter uma preferência pelo serviço de modelo, mas achamos que esta seria uma ótima oportunidade para demonstrar a implantação usando o Fast API.
 
 # COMMAND ----------
 

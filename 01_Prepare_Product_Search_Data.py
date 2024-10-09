@@ -1,13 +1,9 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to prepare the data associated with the products we will suggest to users.  This notebook was developed on a Databricks ML 14.2 cluster.
-
-# COMMAND ----------
-
-# MAGIC %md ##Introduction
+# MAGIC %md ##Introdução
 # MAGIC
-# MAGIC In this notebook, we will use descriptive information about products we intend to present to the user to create a searchable set of embeddings. These embeddings will be used to enable a fast and flexible search of our products.
+# MAGIC Neste notebook, usaremos informações descritivas sobre os produtos que pretendemos apresentar ao usuário para criar um conjunto pesquisável de embeddings. Esses embeddings serão usados para permitir uma pesquisa rápida e flexível de nossos produtos.
 # MAGIC
-# MAGIC To perform this work, we must load the data about our products to a database table.  We must then configure a model with which we will convert descriptive information about those products into embeddings. We will then trigger an ongoing workflow that will keep our searchable embeddings, *i.e.* our vector search index, in sync with the table. 
+# MAGIC Para realizar esse trabalho, devemos carregar os dados sobre nossos produtos em uma tabela de banco de dados. Em seguida, devemos configurar um modelo com o qual converteremos informações descritivas sobre esses produtos em embeddings. Em seguida, acionaremos um fluxo de trabalho contínuo que manterá nossos embeddings pesquisáveis, ou seja, nosso índice de pesquisa de vetores, em sincronia com a tabela.
 
 # COMMAND ----------
 
@@ -43,9 +39,9 @@ import time
 
 # COMMAND ----------
 
-# MAGIC %md ##Step 1: Load the Dataset
+# MAGIC %md ##Passo 1: Carregar o Conjunto de Dados
 # MAGIC
-# MAGIC The dataset we will be using is the [Red Dot Design Award dataset](https://huggingface.co/datasets/xiyuez/red-dot-design-award-product-description), available through HuggingFace. This dataset contains information on award winning products including descriptive text that we can use for searches.  We will treat this as if this were our set of actual products available to sell to customers:
+# MAGIC O conjunto de dados que iremos utilizar é o [Red Dot Design Award dataset](https://huggingface.co/datasets/xiyuez/red-dot-design-award-product-description), disponível através do HuggingFace. Este conjunto de dados contém informações sobre produtos premiados, incluindo texto descritivo que podemos usar para pesquisas. Vamos tratá-lo como se fosse nosso conjunto real de produtos disponíveis para venda aos clientes:
 
 # COMMAND ----------
 
@@ -57,9 +53,9 @@ print(ds)
 
 # COMMAND ----------
 
-# MAGIC %md HuggingFace makes this dataset available as a dictionary dataset.  We'll persist it as a Delta Lake table as this is more typically how users of Databricks would access product information from within the lakehouse.  
+# MAGIC %md O HuggingFace disponibiliza esse conjunto de dados como um dicionário de conjunto de dados. Vamos persisti-lo como uma tabela Delta Lake, pois essa é a forma mais comum de os usuários do Databricks acessarem informações de produtos dentro do lakehouse.
 # MAGIC
-# MAGIC Please note that we are defining the target table for this data in advance so that we can add an [identity field](https://www.databricks.com/blog/2022/08/08/identity-columns-to-generate-surrogate-keys-are-now-available-in-a-lakehouse-near-you.html) to it.  Creating an id field this way simplifies the creation of unique identifiers for each item in our dataset:
+# MAGIC Por favor, observe que estamos definindo a tabela de destino para esses dados antecipadamente para que possamos adicionar um [campo de identidade](https://www.databricks.com/blog/2022/08/08/identity-columns-to-generate-surrogate-keys-are-now-available-in-a-lakehouse-near-you.html) a ela. Criar um campo de identificação dessa maneira simplifica a criação de identificadores exclusivos para cada item em nosso conjunto de dados:
 
 # COMMAND ----------
 
@@ -103,19 +99,19 @@ display( products )
 
 # COMMAND ----------
 
-# MAGIC %md It's important to note that the text field contains the concatenated names and descriptions for our products.  This is the field on which we will base our later searches.
+# MAGIC %md É importante observar que o campo de texto contém os nomes e descrições concatenados de nossos produtos. Este é o campo com base no qual faremos nossas pesquisas posteriores.
 
 # COMMAND ----------
 
-# MAGIC %md ##Step 2: Populate the Vector Store
+# MAGIC %md ##Passo 2: Preencher o Armazenamento de Vetores
 # MAGIC
-# MAGIC To enable our application, we need to convert our product search information to embeddings housed in a searchable vector store.  For this, we will make use of the Databricks integrated vector store.  But to create embeddings understood by the vector store, we need to deploy an embedding model to a Databricks model serving endpoint.
+# MAGIC Para habilitar nosso aplicativo, precisamos converter as informações de pesquisa de produtos em embeddings armazenados em um armazenamento de vetores pesquisável. Para isso, faremos uso do armazenamento de vetores integrado do Databricks. Mas para criar embeddings compreendidos pelo armazenamento de vetores, precisamos implantar um modelo de embedding em um ponto de extremidade de serviço de modelo do Databricks.
 
 # COMMAND ----------
 
-# MAGIC %md ###Step 2a: Deploy Model to MLFlow Registry
+# MAGIC %md ###Passo 2a: Implantar Modelo no Registro do MLFlow
 # MAGIC
-# MAGIC To enable an efficient search of our product information, we need to convert the descriptive text associated with each record into an embedding.  Each embedding is a numerical representation of the content within the text.  We can use any transformer model capable of converting text to an embedding for this stage.  We are using the [all-MiniLM-L6-v2 model](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) because this model produces a reasonably compact embedding (vector) and has been trained for general purpose language scenarios:
+# MAGIC Para permitir uma busca eficiente das informações de nossos produtos, precisamos converter o texto descritivo associado a cada registro em um embedding. Cada embedding é uma representação numérica do conteúdo dentro do texto. Podemos usar qualquer modelo de transformer capaz de converter texto em um embedding para esta etapa. Estamos usando o [modelo all-MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) porque esse modelo produz um embedding (vetor) razoavelmente compacto e foi treinado para cenários de linguagem de propósito geral:
 
 # COMMAND ----------
 
@@ -124,7 +120,7 @@ model = SentenceTransformer('all-MiniLM-L6-v2')
 
 # COMMAND ----------
 
-# MAGIC %md To better understand what this model produces, we can ask it to encode some simple strings.  Notice how each one is converted to a floating point array representing an embedding.  These arrays provide a map of the content within each provided unit of text based on the information encoded within the downloaded model:
+# MAGIC %md Para entender melhor o que esse modelo produz, podemos pedir a ele para codificar algumas strings simples. Observe como cada uma é convertida em uma matriz de ponto flutuante representando um embedding. Essas matrizes fornecem um mapa do conteúdo dentro de cada unidade de texto fornecida com base nas informações codificadas no modelo baixado:
 
 # COMMAND ----------
 
@@ -144,7 +140,7 @@ display(embeddings)
 
 # COMMAND ----------
 
-# MAGIC %md Using the sample sentences and the resulting embeddings, we can generate a signature for our model.  A signature is nothing more than a lightweight schema that defines the expected structure of the inputs and outputs for a given model.  This signature will assist us in deploying our model behind a model serving endpoint later in this notebook:
+# MAGIC %md Usando as frases de exemplo e os embeddings resultantes, podemos gerar uma assinatura para nosso modelo. Uma assinatura é apenas um esquema leve que define a estrutura esperada das entradas e saídas para um determinado modelo. Essa assinatura nos ajudará a implantar nosso modelo em um endpoint de serviço de modelo posteriormente neste notebook:
 
 # COMMAND ----------
 
@@ -154,7 +150,7 @@ print(signature)
 
 # COMMAND ----------
 
-# MAGIC %md We can now register the model along with its signature in the [MLFlow registry](https://docs.databricks.com/en/mlflow/model-registry.html).  This is key step in the publication of the model to a model serving endpoint.  Please note that we are registering this model using the [*sentence_transformers* model flavor](https://mlflow.org/docs/latest/python_api/mlflow.sentence_transformers.html) within MLFlow which is specifically designed to work with this class of model:
+# MAGIC %md Agora podemos registrar o modelo juntamente com sua assinatura no [registro do MLFlow](https://docs.databricks.com/en/mlflow/model-registry.html). Este é um passo fundamental na publicação do modelo em um ponto de extremidade de serviço de modelo. Observe que estamos registrando este modelo usando o [*sentence_transformers* modelo flavor](https://mlflow.org/docs/latest/python_api/mlflow.sentence_transformers.html) dentro do MLFlow, que é especificamente projetado para trabalhar com essa classe de modelo:
 
 # COMMAND ----------
 
@@ -176,7 +172,7 @@ with mlflow.start_run(run_name=config['embedding_model_name']) as run:
 
 # COMMAND ----------
 
-# MAGIC %md With our model registered in MLFlow, we can now determine the model version associated with this deployment.  As we deploy subsequent versions of this model, the MLFlow version number will be incremented:
+# MAGIC %md Com nosso modelo registrado no MLFlow, agora podemos determinar a versão do modelo associada a essa implantação. À medida que implantamos versões subsequentes deste modelo, o número da versão do MLFlow será incrementado:
 
 # COMMAND ----------
 
@@ -184,16 +180,25 @@ with mlflow.start_run(run_name=config['embedding_model_name']) as run:
 # connect to mlflow
 mlf_client = mlflow.MlflowClient()
 
-# get last version of registered model
-model_version = mlf_client.get_latest_versions(config['embedding_model_name'])[0].version
+# search for the model versions with the specified name
+model_versions = mlf_client.search_model_versions(f"name = 'rodrigo_catalog.llm_recommender.{config['embedding_model_name']}'")
+
+# sort the model versions by version number in descending order
+sorted_versions = sorted(model_versions, key=lambda x: x.version, reverse=True)
+
+# get the latest version
+latest_version = sorted_versions[0]
+
+# get the version number
+model_version = latest_version.version
 
 print(model_version)
 
 # COMMAND ----------
 
-# MAGIC %md ###Step 2b: Create Model Serving Endpoint
+# MAGIC %md ###Passo 2b: Criar Endpoint de Serviço do Modelo
 # MAGIC
-# MAGIC With our model deployed to the MLFlow registry, we can now push the model to a Databricks model serving endpoint.  This endpoint will enable vector store population later in this notebook:
+# MAGIC Com nosso modelo implantado no registro do MLFlow, agora podemos enviar o modelo para um endpoint de serviço do modelo do Databricks. Esse endpoint permitirá a população do vetor de armazenamento posteriormente neste notebook:
 
 # COMMAND ----------
 
@@ -206,14 +211,9 @@ workspace_url = "https://" + spark.conf.get("spark.databricks.workspaceUrl")
 
 # COMMAND ----------
 
-# MAGIC %md To deploy our model serving endpoint, we may either use the model serving UI or the Databricks (administrative) REST API as documented [here](https://docs.databricks.com/en/machine-learning/model-serving/create-manage-serving-endpoints.html).  We have elected to use the REST API as it simplifies the deployment process.  However, it does require that we employ either a personal access token or a service principal in order to authenticate to that API.  We've elected to use a personal access token for the sake of simplicity but recommend the use of service principals in all production deployments.  More information on authentication options are available [here](https://docs.databricks.com/en/dev-tools/auth.html).
+# MAGIC %md Para implantar nosso ponto de extremidade de serviço de modelo, podemos usar a interface do usuário de serviço de modelo ou a API REST do Databricks (administrativa), conforme documentado [aqui](https://docs.databricks.com/en/machine-learning/model-serving/create-manage-serving-endpoints.html). Optamos por usar a API REST, pois ela simplifica o processo de implantação. No entanto, requer o uso de um token de acesso pessoal ou um principal de serviço para autenticar na API. Optamos por usar um token de acesso pessoal por uma questão de simplicidade, mas recomendamos o uso de principais de serviço em todas as implantações de produção. Mais informações sobre as opções de autenticação estão disponíveis [aqui](https://docs.databricks.com/en/dev-tools/auth.html).
 # MAGIC
-# MAGIC The personal access token we have setup is secured as a Databricks secret with a scope of *llm_recommmender* and key of *embedding_model_endpoint_pat*.  More details on setting up such a secret is found [here](https://docs.databricks.com/en/security/secrets/index.html) but the basic Databricks CLI commands to set this up are as follows:
-# MAGIC
-# MAGIC ```
-# MAGIC databricks secrets create-scope llm_recommender
-# MAGIC databricks secrets put-secret llm_recommender embedding_model_endpoint_pat
-# MAGIC ```
+# MAGIC O token de acesso pessoal que configuramos está protegido como um segredo do Databricks com um escopo de *llm_recommender* e uma chave de *embedding_model_endpoint_pat*. Mais detalhes sobre a configuração de um segredo podem ser encontrados [aqui](https://docs.databricks.com/en/security/secrets/index.html), mas os comandos básicos do Databricks CLI para configurar isso são os seguintes:
 
 # COMMAND ----------
 
@@ -223,9 +223,10 @@ token = dbutils.secrets.get(scope="llm_recommender", key="embedding_model_endpoi
 
 # COMMAND ----------
 
-# MAGIC %md Using this information, we can now make the necessary calls required to deploy a model serving endpoint within Databricks.  Using the [serving-endpoint](https://docs.databricks.com/en/machine-learning/model-serving/create-manage-serving-endpoints.html#api-workflow) endpoint, we will first check to see if the endpoint has already been deployed.  If it has not, we will deploy the endpoint and wait for it to enter into a ready state:
-# MAGIC
-# MAGIC **NOTE** In the code below, we are configuring the endpoint to stay awake, *i.e.* NOT scale to zero.  This will incur on-going charges.  Be sure to use the code at the bottom of this notebook to drop the endpoint once you are done working through this solution accelerator.
+```markdown
+%md Com essas informações, agora podemos fazer as chamadas necessárias para implantar um ponto de extremidade de serviço de modelo dentro do Databricks. Usando o endpoint [serving-endpoint](https://docs.databricks.com/en/machine-learning/model-serving/create-manage-serving-endpoints.html#api-workflow), primeiro verificaremos se o ponto de extremidade já foi implantado. Se não tiver sido, implantaremos o ponto de extremidade e esperaremos até que ele entre em um estado pronto:
+
+**NOTA** No código abaixo, estamos configurando o ponto de extremidade para permanecer ativo, *ou seja*, NÃO escalar para zero. Isso incorrerá em cobranças contínuas. Certifique-se de usar o código no final deste caderno para descartar o ponto de extremidade assim que terminar de trabalhar neste acelerador de solução.
 
 # COMMAND ----------
 
@@ -257,7 +258,7 @@ else:
         "model_version": model_version,
         "workload_type": "CPU",
         "workload_size": "Small",
-        "scale_to_zero_enabled": False, # you may want to set this to false to minimize startup times
+        "scale_to_zero_enabled": True, # you may want to set this to false to minimize startup times
       }]
     }
   }
@@ -298,9 +299,9 @@ if waiting:
 
 # COMMAND ----------
 
-# MAGIC %md With the endpoint persisted, we can now verify it is producing embeddings for us:
+# MAGIC %md Com o ponto de extremidade persistido, agora podemos verificar se ele está produzindo embeddings para nós:
 # MAGIC
-# MAGIC **NOTE** If you have previously setup the endpoint and configured it with *scale_to_zero_enabled* set to True, the endpoint may be asleep when you request a response below.  Setting an appropriate timeout will allow the endpoint time to wake up and respond.
+# MAGIC **NOTA** Se você já configurou o ponto de extremidade anteriormente e o configurou com *scale_to_zero_enabled* definido como True, o ponto de extremidade pode estar adormecido quando você solicitar uma resposta abaixo. Definir um tempo limite apropriado permitirá que o ponto de extremidade acorde e responda.
 
 # COMMAND ----------
 
@@ -331,11 +332,11 @@ print(invoke_response.text)
 
 # COMMAND ----------
 
-# MAGIC %md ###Step 2c: Populate Vector Store
+# MAGIC %md ###Passo 2c: Preencher o Armazenamento de Vetores
 # MAGIC
-# MAGIC With our embedding model deployed to a model serving endpoint, we can now define a workflow to convert data in our products table into entries in our vector store.  The index creation and maintenance will take place as part of an on-going automation.  It will detect changes to our products table by reading the change log associated with it.  To ensure the [change log](https://docs.databricks.com/en/delta/delta-change-data-feed.html) is enabled, we can alter the table's definition as follows:
+# MAGIC Com nosso modelo de incorporação implantado em um ponto de extremidade de serviço de modelo, agora podemos definir um fluxo de trabalho para converter dados em nossa tabela de produtos em entradas em nosso armazenamento de vetores. A criação e manutenção do índice ocorrerão como parte de uma automação contínua. Ele detectará alterações em nossa tabela de produtos lendo o registro de alterações associado a ela. Para garantir que o [registro de alterações](https://docs.databricks.com/en/delta/delta-change-data-feed.html) esteja habilitado, podemos alterar a definição da tabela da seguinte forma:
 # MAGIC
-# MAGIC **NOTE** Change detection only works with tables persisted in the Delta Lake format.
+# MAGIC **NOTA** A detecção de alterações só funciona com tabelas persistidas no formato Delta Lake.
 
 # COMMAND ----------
 
@@ -344,7 +345,7 @@ _ = spark.sql("ALTER TABLE products SET TBLPROPERTIES (delta.enableChangeDataFee
 
 # COMMAND ----------
 
-# MAGIC %md We can now configure a job to convert data into embeddings on an ongoing basis. This is done by creating a referencable endpoint for the vector store and and index associated with it:
+# MAGIC %md Agora podemos configurar um trabalho para converter dados em incorporações continuamente. Isso é feito criando um ponto de extremidade referenciável para o armazenamento de vetores e um índice associado a ele:
 
 # COMMAND ----------
 
@@ -355,7 +356,7 @@ vs_client = VectorSearchClient()
 
 # DBTITLE 1,Create Vector Search Endpoint
 #name used for vector search endpoint
-endpoint_name = 'vs_'+config['embedding_model_name']
+endpoint_name = "one-env-shared-endpoint-2"
 
 # check if exists
 endpoint_exists = True
@@ -399,7 +400,7 @@ if not index_exists:
 
 # COMMAND ----------
 
-# MAGIC %md The indexing works as part of a background job. It will take some time for the job to launch and start generating embeddings. While we are waiting for this, the job will be in a *provisioning* state.  We will need to wait for this to complete before proceeding with the remainder of this notebook:
+# MAGIC %md A indexação funciona como parte de um trabalho em segundo plano. Levará algum tempo para que o trabalho seja iniciado e comece a gerar embeddings. Enquanto aguardamos isso, o trabalho estará em estado de *provisionamento*. Precisaremos aguardar a conclusão antes de prosseguir com o restante deste notebook:
 
 # COMMAND ----------
 
@@ -432,9 +433,9 @@ if waiting:
 
 # COMMAND ----------
 
-# MAGIC %md ##Step 3: Search the Vector Store
+# MAGIC %md ##Passo 3: Pesquisar no Vector Store
 # MAGIC
-# MAGIC With the vector store populated, we might perform a simple search as follows:
+# MAGIC Com o vector store populado, podemos realizar uma pesquisa simples da seguinte forma:
 
 # COMMAND ----------
 
@@ -451,7 +452,7 @@ idx.similarity_search(
 
 # COMMAND ----------
 
-# MAGIC %md You'll notice the basic search results include a lot of metadata.  If you want to get just the retrieved items, this info is found under the `results` and `data array` keys:
+# MAGIC %md Você notará que os resultados básicos da pesquisa incluem muitos metadados. Se você deseja obter apenas os itens recuperados, essas informações são encontradas nas chaves `results` e `data array`:
 
 # COMMAND ----------
 
@@ -466,7 +467,7 @@ print(search_results['result']['data_array'])
 
 # COMMAND ----------
 
-# MAGIC %md Please notice that the vector search doesn't necessarily match based on word matches but instead maps the provided query text into a embedding that represents how the provided item relates to concepts it's learned by processing large volumes of text.  As a result, it's possible that the search might find *related* items that don't exactly match the search term but which have a more general association.  For this type of recommender, this kind of expansive search is fine as we are attempting to not match exact items but instead leverage these loose associations to expand the set of relevant products we might put in front of a customer.
+# MAGIC %md Observe que a pesquisa por vetor não corresponde necessariamente com base em correspondências de palavras, mas sim mapeia o texto de consulta fornecido em uma incorporação que representa como o item fornecido se relaciona com os conceitos que ele aprendeu ao processar grandes volumes de texto. Como resultado, é possível que a pesquisa encontre itens *relacionados* que não correspondam exatamente ao termo de pesquisa, mas que tenham uma associação mais geral. Para esse tipo de recomendador, esse tipo de pesquisa expansiva é aceitável, pois estamos tentando não corresponder a itens exatos, mas sim aproveitar essas associações soltas para expandir o conjunto de produtos relevantes que podemos apresentar a um cliente.
 
 # COMMAND ----------
 

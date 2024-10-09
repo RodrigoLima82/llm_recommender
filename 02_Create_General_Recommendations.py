@@ -1,13 +1,9 @@
 # Databricks notebook source
-# MAGIC %md The purpose of this notebook is to connect to an LLM in order to create generalized product recommendations.  This notebook was developed on a Databricks ML 14.2 cluster.
-
-# COMMAND ----------
-
-# MAGIC %md ##Introduction
+# MAGIC %md ##Introdução
 # MAGIC
-# MAGIC The next step in building our recommender is to tap into the power of a general purpose large language model (LLM) to suggest additional items for a user.  Given knowledge of the items a customer has purchased, browsed or otherwise expressed interest in, the LLM can tap a resevoir of knowledge to suggest what items would typically be associated with these.
+# MAGIC O próximo passo na construção do nosso recomendador é aproveitar o poder de um modelo de linguagem geral de propósito amplo (LLM) para sugerir itens adicionais para um usuário. Com base no conhecimento dos itens que um cliente comprou, navegou ou manifestou interesse de alguma forma, o LLM pode acessar um reservatório de conhecimento para sugerir quais itens normalmente estão associados a esses.
 # MAGIC
-# MAGIC The steps involved with getting this part of the application stood app are simply to connect to an appropriate LLM and tune a prompt that returns the right results in the right format.
+# MAGIC As etapas envolvidas em obter essa parte do aplicativo em funcionamento são simplesmente conectar-se a um LLM apropriado e ajustar uma solicitação que retorne os resultados corretos no formato correto.
 
 # COMMAND ----------
 
@@ -28,11 +24,11 @@ from databricks_genai_inference import ChatCompletion
 
 # COMMAND ----------
 
-# MAGIC %md ##Step 1: Connect to the LLM
+# MAGIC %md ##Passo 1: Conectar ao LLM
 # MAGIC
-# MAGIC With the availability of a wide variety of proprietary services and open source models, we have numerous options for how we will address our LLM needs. Many frequently used models have been pre-provisioned for use within Databricks as part of our [foundation model APIs](https://docs.databricks.com/en/machine-learning/foundation-models/index.html).  This includes [Meta's Llama2-70B-Chat model](https://ai.meta.com/llama/) which is being widely adopted as a robust, general-purpose chat enabler.
+# MAGIC Com a disponibilidade de uma ampla variedade de serviços proprietários e modelos de código aberto, temos várias opções para lidar com nossas necessidades de LLM. Muitos modelos frequentemente usados já foram pré-provisionados para uso dentro do Databricks como parte de nossas [APIs de modelos fundamentais](https://docs.databricks.com/en/machine-learning/foundation-models/index.html). Isso inclui o modelo [Llama2-70B-Chat da Meta](https://ai.meta.com/llama/), que está sendo amplamente adotado como um habilitador de chat robusto e de propósito geral.
 # MAGIC
-# MAGIC Because all the plumbing has already been put in place, connectivity to this model is very simple.  We just make the call:
+# MAGIC Como toda a infraestrutura já foi configurada, a conectividade a este modelo é muito simples. Basta fazer a chamada:
 
 # COMMAND ----------
 
@@ -55,15 +51,18 @@ print(f'response.message:{response.message}')
 # MAGIC The foundation model API greatly simplifies the process of not only connecting to a model but performing a chat task. Instead of constructing a prompt with specialized formatting, we can assemble a fairly standard [chat message payload](https://docs.databricks.com/en/machine-learning/foundation-models/api-reference.html#chat-task) to generate a response.
 # MAGIC
 # MAGIC As is typical in most chat applications, we will supply a system prompt and a user prompt.  The system prompt for our app might look like this:
+# MAGIC
+# MAGIC ```python
+# MAGIC system_prompt = 'Você é um assistente de IA que funciona como um sistema de recomendação para um site de comércio eletrônico. Seja específico e limite suas respostas ao formato solicitado. Mantenha suas respostas curtas e concisas.'
 
 # COMMAND ----------
 
 # DBTITLE 1,Define System Prompt
-system_prompt = 'You are an AI assistant functioning as a recommendation system for an ecommerce website. Be specific and limit your answers to the requested format. Keep your answers short and concise.'
+system_prompt = 'Você é um assistente de IA que funciona como um sistema de recomendação para um site de comércio eletrônico. Seja específico e limite suas respostas ao formato solicitado. Mantenha suas respostas curtas e concisas.'
 
 # COMMAND ----------
 
-# MAGIC %md For the user prompt, we need to incorporate a list of items from which product recommendations will be produced.  Because this prompt is dynamic, it might be best to define the prompt using a function:
+# MAGIC %md Para o prompt do usuário, precisamos incorporar uma lista de itens a partir da qual as recomendações de produtos serão geradas. Como esse prompt é dinâmico, pode ser melhor definir o prompt usando uma função:
 
 # COMMAND ----------
 
@@ -75,8 +74,9 @@ def get_user_prompt(ordered_list_of_items):
   prompt = None
   if len(ordered_list_of_items) > 0:
     items = ', '.join(ordered_list_of_items)
-    prompt =  f"A user bought the following items: {items}. What next ten items would he/she be likely to purchase next?"
-    prompt += " Express your response as a JSON object with a key of 'next_items' and a value representing your array of recommended items."
+    prompt =  f"Um usuário comprou os seguintes itens: {items}. Quais seriam os próximos dez itens que ele/ela provavelmente compraria?"
+
+  prompt += " Expresse sua resposta como um objeto JSON com uma chave 'next_items' e um valor representando sua matriz de itens recomendados."
  
   return prompt
 
@@ -85,14 +85,14 @@ def get_user_prompt(ordered_list_of_items):
 # DBTITLE 1,Retrieve User Prompt
 # get prompt and results
 user_prompt = get_user_prompt(
-    ['scarf', 'beanie', 'ear muffs', 'thermal underwear']
+    ['cachecol', 'gorro', 'protetor de ouvido', 'roupa de baixo térmica']
     )
 
 print(user_prompt)
 
 # COMMAND ----------
 
-# MAGIC %md And now we can test the prompt with a call to our LLM:
+# MAGIC %md E agora podemos testar o prompt com uma chamada ao nosso LLM:
 
 # COMMAND ----------
 
@@ -109,7 +109,7 @@ print(f'response.message:{response.message}')
 
 # COMMAND ----------
 
-# MAGIC %md Getting the model to respond with lists in the structure  you want and with relevant content is tricky.  (For example, we couldn't get a valid dictionary structure by requesting a python dictionary but found that requesting a JSON object did the trick.) You'll need to experiment with a variety of wordings and phrasings to trigger the right results.
+# MAGIC %md Obter a resposta do modelo com listas na estrutura desejada e com conteúdo relevante é complicado. (Por exemplo, não conseguimos obter uma estrutura de dicionário válida ao solicitar um dicionário Python, mas descobrimos que solicitar um objeto JSON resolveu o problema.) Você precisará experimentar uma variedade de palavras e frases para obter os resultados desejados.
 
 # COMMAND ----------
 
